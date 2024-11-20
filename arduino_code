@@ -1,0 +1,146 @@
+#include<WiFi.h>
+#include <PubSubClient.h>
+#include<DHTesp.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+#include <WiFiUdp.h>
+
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+#define OLED_RESET 1
+#define SCREEN_ADDRESS 0x3C
+Adafruit_SSD1306 display(SCREEN_WIDTH,SCREEN_HEIGHT,&Wire,OLED_RESET);
+
+float temperature = 25.6;  // Example temperature value
+int ldrValue = 1023;  // Example LDR value (from 0 to 1023)
+
+
+#define DHT_PIN 27
+#define AO_PIN 26
+
+WiFiClient espClient;
+PubSubClient mqttClient(espClient); 
+
+
+int lightValue ;
+
+char tempAr[6];
+  char ldrDataAr[9];
+  char humidityAr[11];
+
+const char *ssid = "moto g(20)";
+const char *password = "Thanan123";
+
+
+
+DHTesp dhtSensor;
+
+void setup() {
+Serial.begin(115200);
+setupWifi();
+setupMqtt();
+dhtSensor.setup(DHT_PIN, DHTesp::DHT22);
+
+
+  if (!display.begin(SSD1306_SWITCHCAPVCC,SCREEN_ADDRESS)){
+    Serial.println(F("ssd1306 allocation failed"));
+    for(;;);
+  };
+  display.display();
+  delay(2000);
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(0,0);
+  display.println(F("Envirmental monitoring"));
+
+  display.display();
+WiFi.begin(ssid, password);
+while (WiFi.status() != WL_CONNECTED) {
+    delay(250);
+  Serial.println(WiFi.localIP());
+}
+}
+
+
+void loop() {
+
+lightValue = analogRead(AO_PIN);
+ if(!mqttClient.connected()){
+  connectToBroker();
+ }
+ mqttClient.loop();
+updateTemperature();
+updateLdr();
+Serial.println(ldrDataAr);
+Serial.println(tempAr);
+mqttClient.publish("Environment-TEMP",tempAr);
+mqttClient.publish("Environment-HUMI",humidityAr);
+mqttClient.publish("Envirnoment-LDR",ldrDataAr);
+delay(1000);
+  
+}
+
+
+void setupMqtt(){
+  mqttClient.setServer("test.mosquitto.org",1883);
+}
+
+
+void connectToBroker(){
+  while(!mqttClient.connected()){
+    Serial.print("AttemptingMQTTConnection...");
+    if(mqttClient.connect("ESP32-212120012121")){
+      Serial.println("connected");
+    }else{
+      Serial.print("Failed");
+      Serial.print(mqttClient.state());
+      delay(5000);
+    }
+  }
+}
+void updateTemperature(){
+  TempAndHumidity data = dhtSensor.getTempAndHumidity();
+
+  String(data.temperature, 2).toCharArray(tempAr, 6);
+  String(data.humidity, 2).toCharArray(humidityAr, 11);
+  display.clearDisplay();
+   display.setTextSize(1);      // Set text size
+  display.setTextColor(SSD1306_WHITE); // Set text color
+  display.setCursor(0, 0);     // Set cursor position
+  display.print("Temp: ");
+  display.print(tempAr);       // Print the temperature value
+  display.print(" C");
+   display.setTextSize(1);      // Set text size
+  display.setTextColor(SSD1306_WHITE); // Set text color
+  display.setCursor(0, 20);     // Set cursor position
+  display.print("HUMI ");
+  display.print(humidityAr);       // Print the temperature value
+
+}
+
+void updateLdr(){
+
+String(lightValue).toCharArray(ldrDataAr,9);
+ 
+display.setTextSize(1);      // Set text size
+  display.setTextColor(SSD1306_WHITE); 
+  display.setCursor(0, 40);  // Move to the next line
+  display.print("LDR: ");
+  display.print(ldrValue);     // Print the LDR value
+  display.display(); 
+}
+void setupWifi() {
+    Serial.println();
+  Serial.println();
+  Serial.print("Connecting to ");
+  Serial.println(ssid);
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(250);
+    Serial.print(".");
+  }
+  Serial.println("WIFI CONNECTED");
+  Serial.println("IP address:");
+  Serial.println(WiFi.localIP());
+}
